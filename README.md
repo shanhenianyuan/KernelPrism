@@ -7,8 +7,10 @@
 > LLM, born from intelligence, growing on every run, and callable by **any**
 > agent framework.
 >
-> One engine, every domestic GPU: **Ascend (AscendC) · Lingspeed (LUCA) ·
-> Metax (MXMACA)** — one codebase, instant platform adoption.
+> The repository of **proprietary kernel generation & optimization
+> capabilities for every domestic GPU** — and the **intelligent bridge from
+> the NVIDIA ecosystem to the domestic compute ecosystem**: Ascend (AscendC) ·
+> Lingspeed (LUCA) · Metax (MXMACA) — one codebase, instant platform adoption.
 
 KernelPrism is a **living capability base** for heterogeneous GPU kernel
 development: an LLM-driven 8-stage closed loop —
@@ -19,7 +21,13 @@ own**. It unifies kernel-development capabilities scattered across vendor
 toolchains, pools the strengths of each ecosystem while avoiding its
 pitfalls, and emerges from the **anvil** intelligent native OS as a reusable
 capability layer, consumable by **any agent framework** through a
-machine-readable protocol.
+machine-readable protocol. It is the **collection point for proprietary
+kernel capabilities across all domestic GPU lines**, and the **intelligent
+bridge from the NVIDIA world to domestic compute**: operators, patterns, and
+engineering experience carried over from the CUDA ecosystem are re-expressed
+as native kernels per platform, while real-machine evidence flows back to
+harden the knowledge base — migration becomes a one-way smart pipeline instead
+of a re-implementation project.
 
 ---
 
@@ -32,6 +40,7 @@ machine-readable protocol.
 | **Self-innovating**: parallel workers explore multiple real design ideas and converge on the best | Single hard-coded strategy, one-shot |
 | A capability base **callable by any agent framework** (anvil, Codex, Claude, ...) via `@DONE@ run_id=… status=OK` | A closed UI/CLI that only a human can drive |
 | **Domestic-GPU native**: Ascend / Lingspeed / Metax share one engine | N vendor-specific, copy-pasted, siloed toolchains |
+| **The intelligent bridge from the NVIDIA ecosystem to domestic compute**: CUDA-era operators, patterns, and engineering experience are re-expressed as native kernels per platform; real-machine evidence flows back | A one-way dead-end: teams start from zero on every domestic chip, redo what CUDA already solved |
 
 ---
 
@@ -158,6 +167,24 @@ All code depends solely on the Python standard library — no third-party
 runtime requirements; comments and docs are English-first, lowering the entry
 bar for heterogeneous-GPU engineering teams.
 
+### 11. The intelligent bridge: NVIDIA ecosystem → domestic compute ecosystem
+
+KernelPrism is the **single collection point** for proprietary kernel
+generation & optimization capabilities across **all domestic GPUs** — but
+it does not start from zero:
+
+- **Re-expresses, not re-implements.** Operators, optimization patterns, and
+  engineering experience accumulated in the CUDA/NVIDIA ecosystem are carried
+  over and re-expressed as native kernels per platform (AscendC / LUCA /
+  MXMACA) — the 8-stage pipeline is the migration path.
+- **Two-way evidence flow.** What is learned on real domestic hardware
+  (precision deltas, perf curves, compiler behavior) flows back into
+  `vendorkb` and the feedback chain, hardening the base for the next
+  migration — the bridge gets stronger the more it is crossed.
+- **One registry, all chips.** Every domestic accelerator — current and next
+  generation — joins the same repository, same engine, same protocol,
+  instead of fragmenting into per-vendor silos that each redo CUDA's journey.
+
 ---
 
 ## Real-World Evidence: Lingspeed 8-Stage live Hard-Machine Closure
@@ -250,6 +277,14 @@ New-platform onboarding: copy the minimal adapter skeleton → fill in
 `manifest.json` → override thin wrapper hooks as needed → `kp vendor add <id>`
 → paper smoke → live hard-machine closure.
 
+Onboarding is deliberately **collective**: every new domestic GPU — Huawei,
+Lingspeed, Metax, and the next generation of domestic accelerators — lands in
+the same repository, on the same 8-stage engine, under the same agent-callable
+protocol. The repository is the **single registry of proprietary kernel
+capabilities for all domestic GPUs**, and the **smart bridge that carries the
+NVIDIA ecosystem's accumulated kernel know-how into the domestic compute
+ecosystem**.
+
 ---
 
 ## License & Compliance
@@ -272,4 +307,6 @@ New-platform onboarding: copy the minimal adapter skeleton → fill in
 ---
 
 **KernelPrism** — the capability layer of heterogeneous-GPU kernel development,
-built for agents.
+built for agents: the repository of proprietary kernel generation &
+optimization capabilities for every domestic GPU, and the intelligent bridge
+from the NVIDIA ecosystem to the domestic compute ecosystem.
