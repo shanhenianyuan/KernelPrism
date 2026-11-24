@@ -1,4 +1,8 @@
-# KernelPrism — The Self-Evolving Capability Base for Heterogeneous GPU Kernel Development
+# KernelPrism — The Unified Intelligent Platform for Domestic-GPU Operator Optimization
+
+> A self-evolving capability base for heterogeneous GPU kernel development:
+> **conceived by intelligence, growing on every run, callable by any agent
+> framework.**
 
 > Software is no longer a static tool chained to preset rules. KernelPrism is a
 > **capability base conceived by intelligence, ever-evolving, and
@@ -12,8 +16,12 @@
 > the NVIDIA ecosystem to the domestic compute ecosystem**: Ascend (AscendC) ·
 > Lingspeed (LUCA) · Metax (MXMACA) — one codebase, instant platform adoption.
 
-KernelPrism is a **living capability base** for heterogeneous GPU kernel
-development: an LLM-driven 8-stage closed loop —
+KernelPrism is the **unified intelligent platform for domestic-GPU operator
+optimization**: one engine that collects, generates, verifies, and optimizes
+native kernels across **all domestic GPU lines** — Huawei, Lingspeed, Metax,
+and the next generation of domestic accelerators — under one agent-callable
+protocol. Concretely, it is a **living capability base** for heterogeneous GPU
+kernel development: an LLM-driven 8-stage closed loop —
 model understanding → operator analysis → kernel generation → compilation →
 precision verification → performance profiling → automated optimization →
 operator registration — that **conceives, evolves, and ships kernels on its
