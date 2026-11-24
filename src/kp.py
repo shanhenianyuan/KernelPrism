@@ -73,20 +73,26 @@ def cmd_vendor(args: argparse.Namespace) -> int:
     return 2
 
 
-def cmd_run(args: argparse.Namespace) -> int:
-    reg = VendorRegistry(args.anvil_root)
-    vendor_id = args.vendor or 'ascend'
+def execute_run(vendor_id: str, task: str, exec_mode: str = 'paper',
+                model_goal: str | None = None,
+                budget_iters: int = 3, budget_minutes: float = 60.0,
+                anvil_root: str = '') -> dict:
+    """Run the 8-stage pipeline as a library call (no argv, no stdout side effects).
+
+    This is the shared engine entry used by BOTH the `kp run` CLI and the MCP
+    server — any agent framework can drive the same code path. Returns
+    {'run_id', 'ok', 'run_dir'} so callers keep the @DONE@-contract semantics
+    without parsing stdout.
+    """
+    reg = VendorRegistry(anvil_root)
     vendor = reg.load(vendor_id)
     if vendor is None:
-        print(f"adapter not found: {vendor_id} (run 'kp vendor add {vendor_id}' first)", file=sys.stderr)
-        return 1
-
-    # Model-level goal (spec 03 §9 end-to-end intent entry) via --model-goal, e.g. 'throughput'
-    model_goal = getattr(args, 'model_goal', None)
+        raise FileNotFoundError(
+            f"adapter not found: {vendor_id} (run 'kp vendor add {vendor_id}' first)")
 
     run_root = Path(default_output_root()) / 'kp-runs'
     run_root.mkdir(parents=True, exist_ok=True)
-    run_id = make_run_id(vendor_id, args.task)
+    run_id = make_run_id(vendor_id, task)
     run_dir = run_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     (run_dir / 'artifacts').mkdir(parents=True, exist_ok=True)
@@ -96,16 +102,32 @@ def cmd_run(args: argparse.Namespace) -> int:
         run_dir=str(run_dir),
         vendor=vendor,
         model_goal=model_goal,
-        exec_mode=args.exec_mode,
-        budget_iters=getattr(args, 'budget_iters', 3),
-        budget_minutes=getattr(args, 'budget_minutes', 60),
+        exec_mode=exec_mode,
+        budget_iters=budget_iters,
+        budget_minutes=budget_minutes,
     )
+    ok = runner.run(task=task)
+    return {'run_id': run_id, 'ok': ok, 'run_dir': str(run_dir)}
 
-    ok = runner.run(task=args.task)
-    if not ok:
+
+def cmd_run(args: argparse.Namespace) -> int:
+    try:
+        r = execute_run(
+            vendor_id=args.vendor or 'ascend',
+            task=args.task,
+            exec_mode=args.exec_mode,
+            model_goal=getattr(args, 'model_goal', None),
+            budget_iters=getattr(args, 'budget_iters', 3),
+            budget_minutes=getattr(args, 'budget_minutes', 60.0),
+            anvil_root=args.anvil_root,
+        )
+    except FileNotFoundError as e:
+        print(str(e), file=sys.stderr)
         return 1
-    print(f"\n@DONE@ run_id={run_id} status=OK")
-    print(f"Artifacts directory: {run_dir}")
+    if not r['ok']:
+        return 1
+    print(f"\n@DONE@ run_id={r['run_id']} status=OK")
+    print(f"Artifacts directory: {r['run_dir']}")
     return 0
 
 
@@ -134,11 +156,16 @@ def main(argv=None) -> int:
     rp.add_argument('--budget-iters', type=int, default=3, help='stage-7 evolution iteration budget')
     rp.add_argument('--budget-minutes', type=float, default=60.0, help='global minute budget')
 
+    mp = sub.add_parser('serve-mcp', help='run the MCP stdio server (agent-agnostic capability surface)')
+
     args = p.parse_args(argv)
     if args.cmd == 'vendor':
         return cmd_vendor(args)
     if args.cmd == 'run':
         return cmd_run(args)
+    if args.cmd == 'serve-mcp':
+        from mcp_server import serve  # noqa: PLC0415  (deferred: only when serving)
+        return serve(args.anvil_root)
     return 2
 
 

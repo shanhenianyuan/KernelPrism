@@ -144,10 +144,26 @@ consume as a ready-made skill:
 - **Drop-in orchestration**: an agent passes a task definition (op_costs /
   shapes / precision requirements), reads `@DONE@`, and continues — kernel
   development becomes one callable step in the agent's own loop.
+- **MCP (Model Context Protocol) native surface** (`kp serve-mcp`): a
+  hand-rolled, stdlib-only JSON-RPC 2.0 stdio server speaking the protocol
+  that Claude Code, Codex, Cursor, Cline, Continue, and anvil all speak
+  natively. Any MCP-capable agent connects with a 3-line config and gets
+  `kp_vendor_list` / `kp_run` / `kp_audit_read` as first-class tools —
+  the same engine the CLI drives, over a real interop protocol, not a
+  hand-rolled contract. Verified by `verify_mcp.py` (initialize → tools/list
+  → tools/call → full 8-stage pipeline → audit read, all frames as a stock
+  MCP client would send them). Example config for Claude Code (`.mcp.json`):
+  ```json
+  {"mcpServers": {"kernelprism": {
+      "command": "python3",
+      "args": ["/path/to/kernel-prism/src/kp.py", "serve-mcp"],
+      "cwd": "/path/to/kernel-prism"}}}
+  ```
+  Cursor / Cline / Continue accept the same shape in their MCP settings.
 
 It therefore serves as the **kernel-development capability base for the anvil
-intelligent native OS** and, by the same contract, for any other agent
-framework.
+intelligent native OS** and, by the same protocol contract, for **any other
+MCP-capable agent framework**.
 
 ### 9. Self-evolving: every run hardens the base
 
@@ -231,6 +247,11 @@ python3 src/kp.py run add --vendor lingspeed --exec-mode live
 
 # 5. Model-level goal (throughput / latency): auto-enables model-level closure gate
 python3 src/kp.py run gqa --vendor lingspeed --model-goal throughput
+# 6. Expose KernelPrism to ANY MCP-capable agent (Claude Code, Codex, Cursor,
+#    Cline, Continue, anvil, ...) as a native tool server:
+python3 src/kp.py serve-mcp
+#    Smoke-verify the MCP surface end-to-end (acts as a stock MCP client):
+python3 verify_mcp.py --vendor lingspeed --task add
 ```
 
 Output follows the `anvil_output/kp-runs/<run_id>/` convention: `audit.jsonl`
@@ -257,7 +278,8 @@ mis-targets.
 ```
 kernel-prism/
 ├── src/
-│   ├── kp.py           # CLI: kp run / kp vendor (paper|live dual mode)
+│   ├── kp.py           # CLI: kp run / kp vendor (paper|live dual mode) + kp serve-mcp (MCP stdio server)
+│   ├── mcp_server.py   # MCP stdio server (JSON-RPC 2.0, stdlib-only): kp_vendor_list / kp_run / kp_audit_read
 │   ├── pipeline.py     # 8-stage pipeline engine (gates/fallback/budget/model-level closure)
 │   ├── vendor.py       # adapter registry (manifest validation/capability matrix/lifecycle)
 │   └── artifacts.py    # artifact schemas + transactional persistence + BottleneckReport
