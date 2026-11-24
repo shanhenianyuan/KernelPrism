@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""ascend 适配器 v3_compile hook（04 §3 接口契约）：真机编译链。
+"""ascend adapter v3_compile hook (04 §3 interface contract): live compile chain.
 
-输入(stdin JSON payload):
+Input (stdin JSON payload):
   {kernel_source, workspace, run_id}
-    kernel_source.op_id  —— 算子 id，如 add-c1
-    kernel_source.source_tree.ir   —— 可选，IR 模板（缺省按 AddCustom 向量加生成）
+    kernel_source.op_id  -- op id, e.g. add-c1
+    kernel_source.source_tree.ir   -- optional, IR template (defaults to AddCustom
+                                      vector-add generation)
 
-输出(stdout 最后一行 JSON，BuildArtifact 兼容):
+Output (stdout last-line JSON, BuildArtifact compatible):
   {build_ok, detail, build_log_path, artifacts: [{kind, ref}],
    toolchain: {compiler, version, flags}, env_snapshot, duration}
 
-真机定式（probe33–35 实证收敛，2026-11-21）:
+Live-machine recipe (converged empirically via probe33-35, 2026-11-21):
   msopgen gen -i op.json -c ai_core-ascend910b1 -lan cpp -out <proj>
   cmake -S <proj> -B <proj>/build -DASCEND_CANN_PACKAGE_PATH=<toolkit>
-        -DENABLE_BINARY_PACKAGE=ON -DENABLE_SOURCE_PACKAGE=OFF   # 双布尔必须同时显式
+        -DENABLE_BINARY_PACKAGE=ON -DENABLE_SOURCE_PACKAGE=OFF   # both booleans must be set explicitly
   cmake --build <proj>/build --target binary
-产物:
+Artifacts:
   op_kernel/binary/ascend910b/<op>/<OpName>_<hash>.o/.json
   op_kernel/binary/config/ascend910b/<op>.json
   op_host/libcust_opmaster_rt2.0.so
@@ -43,11 +44,11 @@ def _find_msopgen() -> str:
                  shutil.which('msopgen') or ''):
         if cand and os.path.exists(cand):
             return cand
-    return 'msopgen'  # 交由 PATH
+    return 'msopgen'  # leave it to PATH
 
 
 def _gen_ir(op_id: str) -> dict:
-    """IR 模板：type 数组 + format ND + param_type required（probe13/23 实证格式）。"""
+    """IR template: type array + format ND + param_type required (format verified via probe13/23)."""
     return [
         {
             "op": "AddCustom",
@@ -81,13 +82,13 @@ def compile_op(kernel_source: dict, workspace: str) -> dict:
     tk = os.environ.get('ASCEND_CANN_PACKAGE_PATH') or SYSROOT
     msopgen = _find_msopgen()
 
-    # 1) IR -> op.json（用户 op_id 保留在 kernel_pkg 名上，vendor 算子名固定 AddCustom）
+    # 1) IR -> op.json (user op_id preserved in the kernel_pkg name; vendor op name fixed as AddCustom)
     ir = kernel_source.get('source_tree', {}).get('ir') or _gen_ir(kernel_source.get('op_id', 'add-c1'))
     op_json = os.path.join(workspace, 'op.json')
     with open(op_json, 'w', encoding='utf-8') as f:
         json.dump(ir, f, ensure_ascii=False, indent=2)
 
-    # 2) msopgen 生成工程
+    # 2) generate the project with msopgen
     r = subprocess.run([msopgen, 'gen', '-i', op_json, '-c', SOC,
                         '-lan', 'cpp', '-out', proj],
                        capture_output=True, text=True, timeout=300)
@@ -100,11 +101,11 @@ def compile_op(kernel_source: dict, workspace: str) -> dict:
                 'env_snapshot': {}, 'duration': round(time.monotonic() - t0, 3)}
 
     if not os.path.exists(os.path.join(proj, 'CMakeLists.txt')):
-        return {'build_ok': False, 'detail': 'msopgen 未产出 CMakeLists.txt',
+        return {'build_ok': False, 'detail': 'msopgen produced no CMakeLists.txt',
                 'build_log_path': log_path, 'artifacts': [], 'toolchain': {},
                 'env_snapshot': {}, 'duration': round(time.monotonic() - t0, 3)}
 
-    # 3) cmake configure —— 双布尔必须同时显式（probe34 实证；缺任一 → func.cmake:362 if 语法错）
+    # 3) cmake configure -- both booleans must be set explicitly (verified by probe34; missing either -> func.cmake:362 if syntax error)
     cfg = ['cmake', '-S', proj, '-B', build,
            f'-DASCEND_CANN_PACKAGE_PATH={tk}',
            '-DENABLE_BINARY_PACKAGE=ON', '-DENABLE_SOURCE_PACKAGE=OFF']
@@ -116,7 +117,7 @@ def compile_op(kernel_source: dict, workspace: str) -> dict:
                 'build_log_path': log_path, 'artifacts': [], 'toolchain': {},
                 'env_snapshot': {}, 'duration': round(time.monotonic() - t0, 3)}
 
-    # 4) build binary 根 target（自动驱动 AddCustom_ascend910b -> ascendc_bin_* -> binary）
+    # 4) build the binary root target (auto-drives AddCustom_ascend910b -> ascendc_bin_* -> binary)
     r = subprocess.run(['cmake', '--build', build, '--target', 'binary'],
                        capture_output=True, text=True, timeout=1800)
     log(f'[build] exit={r.returncode}')
@@ -126,7 +127,7 @@ def compile_op(kernel_source: dict, workspace: str) -> dict:
                 'build_log_path': log_path, 'artifacts': [], 'toolchain': {},
                 'env_snapshot': {}, 'duration': round(time.monotonic() - t0, 3)}
 
-    # 5) 汇总产物
+    # 5) collect artifacts
     arts = []
     for pat in ('op_kernel/binary/ascend910b/*/*.o',
                 'op_kernel/binary/ascend910b/*/*.json',
@@ -138,13 +139,13 @@ def compile_op(kernel_source: dict, workspace: str) -> dict:
                          ('op_config' if p.endswith('.json') else 'host_lib'),
                          'ref': os.path.relpath(p, build)})
     if not arts:
-        return {'build_ok': False, 'detail': 'build 成功但未发现产物',
+        return {'build_ok': False, 'detail': 'build succeeded but no artifacts found',
                 'build_log_path': log_path, 'artifacts': [], 'toolchain': {},
                 'env_snapshot': {}, 'duration': round(time.monotonic() - t0, 3)}
 
     return {
         'build_ok': True,
-        'detail': f'msopgen+cmake 官方链编译成功（{len(arts)} 产物）',
+        'detail': f'msopgen+cmake official chain compiled successfully ({len(arts)} artifacts)',
         'build_log_path': log_path,
         'artifacts': arts,
         'toolchain': {'compiler': 'ccec(msopgen+cmake)', 'version': os.environ.get('CANN_VERSION', '8.5.1'),
@@ -162,7 +163,7 @@ def main():
     try:
         res = compile_op(ks, workspace)
         res['exit_code'] = 0 if res['build_ok'] else 1
-    except Exception as e:  # noqa: BLE001   # 兜底:crash 也要回 JSON,带 traceback 供诊断
+    except Exception as e:  # noqa: BLE001   # fallback: even on crash, return JSON with traceback for diagnosis
         import traceback
         res = {'build_ok': False, 'detail': f'compile_op crash: {e}\n{traceback.format_exc()[-800:]}',
                'build_log_path': os.path.join(workspace, 'compile.log'), 'artifacts': [],

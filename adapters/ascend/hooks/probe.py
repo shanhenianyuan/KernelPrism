@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""ascend 适配器 probe（04 §3 接口契约）：设备探测。
+"""ascend adapter probe (04 §3 interface contract): device discovery.
 
-返回:
+Returns:
   {available: bool, devices: [...], toolchain_ok: bool, versions: {...}}
 
-Phase 1 纸面冒烟：本机无昇腾硬件时 available=false 但 toolchain_ok=template，
-平台照常以通用兜底跑通 8 段（06-roadmap Phase 1 风险对策：纯 CPU sandbox 冒烟）。
-真机部署后此文件由环境探测真实覆盖。
+Phase 1 paper smoke test: with no Ascend hardware on this machine available=false
+but toolchain_ok=template, and the platform still runs all 8 stages via the generic
+fallback (06-roadmap Phase 1 risk mitigation: pure CPU sandbox smoke).
+After live deployment this file is genuinely superseded by environment probing.
 """
 import json
 import os
@@ -20,7 +21,7 @@ VENDORKB = os.path.join(ADAPTER_DIR, 'vendorkb')
 
 
 def probe() -> dict:
-    # 真实硬件探测点（昇腾环境变量惯用名）
+    # real hardware probe point (conventional Ascend env var names)
     ascend_home = os.environ.get('ASCEND_HOME') or os.environ.get('ASCEND_TOOLKIT_HOME')
     npu_visible = os.environ.get('ASCEND_RT_VISIBLE_DEVICES')
 
@@ -44,9 +45,10 @@ def probe() -> dict:
             "adapter": "2.4.0",
             "environment": "paper-template" if not hw_available else "live"
         },
-        "note": ("本机未探测到昇腾工具链/设备 → 平台以通用兜底跑通 8 段"
-                 "（Phase 1 纸面冒烟）；真机环境设置 ASCEND_HOME + "
-                 "ASCEND_RT_VISIBLE_DEVICES 后自动切换 live")
+        "note": ("no Ascend toolchain/device detected on this machine -> "
+                 "platform runs all 8 stages via generic fallback "
+                 "(Phase 1 paper smoke); on real hardware set ASCEND_HOME + "
+                 "ASCEND_RT_VISIBLE_DEVICES to auto-switch to live")
     }
 
 

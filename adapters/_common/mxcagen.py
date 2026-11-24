@@ -1,36 +1,36 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""mxcagen.py — 沐曦/领速 双卡同源适配器公共工具模块
+"""mxcagen.py — shared tooling module for the Metax/Lingspeed dual-card same-source adapters
 ====================================================
-给 metax（沐曦 MXMACA）与 lingspeed（灵汐领速 LUCA）两个适配器的
-compile / verify / perf 核心 hook 复用同一份底层能力：
-  1. locate_toolchain() —— 定位编译器（mxcc / lscc）+ 运行时（/opt/maca / /opt/luca-3.8.0）
-  2. gen_add_cpp()       —— 从 kernel_source（template/mechanism）生成单档 C++ 源
-                             （kernel + host 驱动，按 mode 分支 compile/verify/perf）
-  3. compile_cpp()       —— 调 mxcc -x maca / lscc -x luca 编译单档 C++
-  4. run_binary()        —— 运行编译产物，按 @DONE@ 协议 + RESULT 行解析
-  5. emit()              —— hook 输出契约：stdout 尾行 JSON
+Gives the compile / verify / perf core hooks of the metax (Metax MXMACA) and
+lingspeed (Lingspeed LUCA) adapters one shared set of low-level capabilities:
+  1. locate_toolchain() —— locate the compiler (mxcc / lscc) + runtime (/opt/maca / /opt/luca-3.8.0)
+  2. gen_add_cpp()       —— generate a single-file C++ source from kernel_source (template/mechanism)
+                             (kernel + host driver, branched by mode compile/verify/perf)
+  3. compile_cpp()       —— compile the single-file C++ with mxcc -x maca / lscc -x luca
+  4. run_binary()        —— run the compiled artifact, parse via @DONE@ protocol + RESULT line
+  5. emit()              —— hook output contract: trailing-JSON line on stdout
 
-设计依据（全部实证，2026-11-23）：
-  - 双卡同源：领速 = 沐曦换名前缀。lscc↔mxcc、lc_*↔mc_*、lc_runtime.h↔mc_runtime.h、
-    `-x luca`↔`-x maca`、/opt/luca↔/opt/maca（对照表实证）。
-  - 灵汐编译链 = 单档 LUCA C++ -> `lscc -x luca src.cpp -o bin` -> 运行 ./bin
-  - LUCA runtime API（gqa_bench.cpp 实证）：lc_runtime.h / lc_common.h、
-    lcMalloc / lcFree / lcMemcpy(HostToDevice|DeviceToHost) / lcGetErrorString、
-    lcSuccess；kernel 用 __global__ + <<<grid, blk, 0, 0>>> 三括号启动。
-  - 沐曦同构 API（官方文档实证）：mc_runtime.h、mcMalloc / mcFree / mcMemcpy、
-    mcGetErrorString、mcSuccess；`<<<>>>` 三括号语法等价（mxcc -x maca 编译）。
-  - d2h sync 计时（perf）：warmup 后经 DeviceToHost memcpy 同步点，
-    clock_gettime(CLOCK_MONOTONIC) 前后取差（gqa_bench bench_seq 实证）。
-  - @DONE@ 协议：程序完成标记，hook 以此确认运行完整结束。
-  - 无 torch：verify 的 golden 侧是 host float64 参考（refcheck.cpp 形态），
-    直接编译进同一单档程序内做逐元素对比。
+Design rationale (all verified empirically, 2026-11-23):
+  - Dual-card same source: Lingspeed = Metax under a renamed prefix. lscc<->mxcc, lc_*<->mc_*,
+    lc_runtime.h<->mc_runtime.h, `-x luca`<->`-x maca`, /opt/luca<->/opt/maca (verified table).
+  - Lingspeed compile chain = single-file LUCA C++ -> `lscc -x luca src.cpp -o bin` -> run ./bin
+  - LUCA runtime API (verified in gqa_bench.cpp): lc_runtime.h / lc_common.h,
+    lcMalloc / lcFree / lcMemcpy(HostToDevice|DeviceToHost) / lcGetErrorString,
+    lcSuccess; kernel launched with __global__ + <<<grid, blk, 0, 0>>> triple-angle brackets.
+  - Metax isomorphic API (verified against official docs): mc_runtime.h, mcMalloc / mcFree / mcMemcpy,
+    mcGetErrorString, mcSuccess; the `<<<>>>` triple-angle syntax is equivalent (compiled with mxcc -x maca).
+  - d2h sync timing (perf): after warmup, a DeviceToHost memcpy acts as the sync point;
+    clock_gettime(CLOCK_MONOTONIC) delta measured before/after (verified in gqa_bench bench_seq).
+  - @DONE@ protocol: program-completion marker; hooks use it to confirm the run finished fully.
+  - No torch: the verify golden side is a host float64 reference (refcheck.cpp style),
+    compiled directly into the same single-file program for element-wise comparison.
 
-钩子被 pipeline 以「子进程 + stdin JSON payload + stdout 尾行 JSON」调用
-（src/pipeline.py _call_hook：cwd = hooks 目录，timeout 600s）。
-本模块不直接运行（无 main）；但可单独 `python3 mxcagen.py -t <platform>` 自检工具链。
+Hooks are invoked by the pipeline as "subprocess + stdin JSON payload + trailing JSON line on stdout"
+(src/pipeline.py _call_hook: cwd = hooks dir, timeout 600s).
+This module is not meant to run directly (no main); but `python3 mxcagen.py -t <platform>` can self-check the toolchain.
 
-stdlib-only，无第三方依赖。
+stdlib-only, no third-party dependencies.
 """
 
 import json
@@ -41,33 +41,34 @@ import sys
 import time
 
 # ---------------------------------------------------------------------------
-# 平台参数表（双卡同源：仅 工具链路径/编译器名/-x 语言/设备节点/API 前缀 不同）
+# Platform parameter table (dual-card same source: only the toolchain path /
+# compiler name / -x language / device nodes / API prefix differ)
 # ---------------------------------------------------------------------------
 PLATFORMS = {
     'lingspeed': {
-        'label': '灵汐领速 (Lingspeed LUCA)',
+        'label': 'Lingspeed LUCA',
         'env_path': 'LUCA_PATH',
-        'home_candidates': ['/opt/luca-3.8.0', '/opt/luca'],  # 实链在前（/opt/luca 悬空）
+        'home_candidates': ['/opt/luca-3.8.0', '/opt/luca'],  # real link first (/opt/luca is dangling)
         'compiler_rel': os.path.join('lsgpu_llvm', 'bin', 'lscc'),
         'x_lang': 'luca',
-        'dev_nodes': ['/dev/lscd'],          # crw------- 235,0（无需 mknod）
+        'dev_nodes': ['/dev/lscd'],          # crw------- 235,0 (no mknod needed)
         'version': '3.8.0',
         'runtime_lib': 'LUCA',
         'compiler_label': 'lscc',
-        'api_map': {},                       # 同源本尊，无需替换
+        'api_map': {},                       # same-source original, nothing to remap
         'perf_baseline_url': 'https://www.lingspeed.com/benchmarks/',
     },
     'metax': {
-        'label': '沐曦 (Metax MXMACA)',
+        'label': 'Metax MXMACA',
         'env_path': 'MACA_PATH',
-        'home_candidates': ['/opt/maca'],    # 沐曦软件栈真身（对照实证）
-        'compiler_rel': os.path.join('bin', 'mxcc'),  # 待真机实证；同 lscc 位
+        'home_candidates': ['/opt/maca'],    # the real Metax software stack (verified by comparison)
+        'compiler_rel': os.path.join('bin', 'mxcc'),  # pending real-hardware verification; same slot as lscc
         'x_lang': 'maca',
-        'dev_nodes': ['/dev/mxc0', '/dev/metax_gpu', '/dev/mxc'],  # 待真机实证
+        'dev_nodes': ['/dev/mxc0', '/dev/metax_gpu', '/dev/mxc'],  # pending real-hardware verification
         'version': 'unknown',
         'runtime_lib': 'MXMACA',
         'compiler_label': 'mxcc',
-        'api_map': {                         # 领速前缀 -> 沐曦前缀（同源换名）
+        'api_map': {                         # Lingspeed prefix -> Metax prefix (same-source rename)
             'lc_runtime.h': 'mc_runtime.h',
             'lc_common.h': 'mc_common.h',
             'lcError_t': 'mcError_t',
@@ -83,7 +84,7 @@ PLATFORMS = {
     },
 }
 
-# 模板占位符（避免 f-string 大括号转义地狱，生成时逐一 replace）
+# Template placeholders (avoid f-string brace-escaping hell; replaced one by one at generation time)
 _T = {
     'N_ELEMS': '@@N_ELEMS@@',
     'BLK': '@@BLK@@',
@@ -98,8 +99,9 @@ _T = {
     'OP_ID': '@@OP_ID@@',
 }
 
-# 单档 C++ 主模板：kernel 定义 + host 驱动（按 mode 裁剪）。
-# 基准为领速 LUCA 语法（实证原版）；metax 平台经 api_map 前缀替换得到 mc_* 同构版。
+# Single-file C++ master template: kernel definition + host driver (trimmed by mode).
+# Baseline is the Lingspeed LUCA syntax (verified original); the metax platform gets the
+# mc_* isomorphic version via api_map prefix replacement.
 _ADD_TEMPLATE = r"""// Lingspeed LUCA / Metax MXMACA kernel — generated by kernel-prism adapters/_common/mxcagen.py
 // platform=@@PLATFORM@@  op_id=@@OP_ID@@  mode=@@MODE@@  n=@@N_ELEMS@@  blk=@@BLK@@  grid=@@GRID@@
 #include <stdio.h>
@@ -131,7 +133,7 @@ static double now_ms(void) {
 
 static int verify_add(const float* h_a, const float* h_b, const float* h_o,
                       int n, double* max_abs, double* max_rel) {
-    // host float64 golden（refcheck.cpp 形态）：逐元素 a+b，仅输出对比量
+    // host float64 golden (refcheck.cpp style): element-wise a+b, outputs only the comparison metrics
     double ma = 0.0, mr = 0.0;
     int bad = 0;
     for (int i = 0; i < n; i++) {
@@ -141,7 +143,7 @@ static int verify_add(const float* h_a, const float* h_b, const float* h_o,
         double rr = (fabs(ref) > 1e-30) ? (ae / fabs(ref)) : ae;
         if (ae > ma) ma = ae;
         if (rr > mr) mr = rr;
-        /* 只对有限个采样点判 bad（避免 n 大时慢） */
+        /* only flag bad on a bounded number of sample points (avoid slowness at large n) */
         if (ae > 1e-4f && bad < 8) bad++;
     }
     *max_abs = ma;
@@ -157,7 +159,7 @@ int main(void) {
     const int segs = @@SEGS@@;
     const int seg_iters = @@SEG_ITERS@@;
 
-    /* ---- host 输入（确定性伪随机，避免依赖 rand 差异） ---- */
+    /* ---- host inputs (deterministic pseudo-random, avoid relying on rand variance) ---- */
     float *h_a = (float*)malloc((size_t)n * sizeof(float));
     float *h_b = (float*)malloc((size_t)n * sizeof(float));
     float *h_o = (float*)malloc((size_t)n * sizeof(float));
@@ -171,7 +173,7 @@ int main(void) {
         seed = seed * 1103515245u + 12345u;
     }
 
-    /* ---- device 端 ---- */
+    /* ---- device side ---- */
     float *d_a = NULL, *d_b = NULL, *d_o = NULL;
     LCK(lcMalloc((void**)&d_a, (size_t)n * sizeof(float)), "malloc a");
     LCK(lcMalloc((void**)&d_b, (size_t)n * sizeof(float)), "malloc b");
@@ -179,11 +181,11 @@ int main(void) {
     LCK(lcMemcpy(d_a, h_a, (size_t)n * sizeof(float), lcMemcpyHostToDevice), "cp a");
     LCK(lcMemcpy(d_b, h_b, (size_t)n * sizeof(float), lcMemcpyHostToDevice), "cp b");
 
-    /* ---- warmup + 同步点（d2h sync 计时实证） ---- */
+    /* ---- warmup + sync point (verified d2h sync timing) ---- */
     for (int w = 0; w < warm; w++) add_kernel<<<grid, blk, 0, 0>>>(d_a, d_b, d_o, n);
     LCK(lcMemcpy(sink, d_o, sizeof(float), lcMemcpyDeviceToHost), "sync warm");
 
-    /* ---- 分段计时：每段 seg_iters 次 launch，段间 d2h sync ---- */
+    /* ---- segmented timing: seg_iters launches per segment, d2h sync between segments ---- */
     double per_seg[@@SEGS@@];
     for (int s = 0; s < segs; s++) {
         double t0 = now_ms();
@@ -194,12 +196,12 @@ int main(void) {
         per_seg[s] = (t1 - t0) / (double)seg_iters;
     }
 
-    /* ---- 拷回 + 校验 ---- */
+    /* ---- copy back + verify ---- */
     LCK(lcMemcpy(h_o, d_o, (size_t)n * sizeof(float), lcMemcpyDeviceToHost), "cp o");
     double max_abs = 0.0, max_rel = 0.0;
     int bad = verify_add(h_a, h_b, h_o, n, &max_abs, &max_rel);
 
-    /* ---- 汇总（RESULT 行供 hook 解析；@DONE@ 为完成协议） ---- */
+    /* ---- summary (RESULT line for hook parsing; @DONE@ is the completion protocol) ---- */
     double avg_ms_all = 0.0;
     for (int s = 0; s < segs; s++) avg_ms_all += per_seg[s];
     avg_ms_all /= (double)segs;
@@ -225,7 +227,7 @@ int main(void) {
 
 
 def platform(name: str) -> dict:
-    """取平台参数表；未知平台回退 lingspeed 并告警。"""
+    """Get the platform parameter table; unknown platforms fall back to lingspeed with a warning."""
     if name not in PLATFORMS:
         sys.stderr.write('mxcagen: unknown platform %r, fallback lingspeed\n' % name)
         name = 'lingspeed'
@@ -233,17 +235,17 @@ def platform(name: str) -> dict:
 
 
 def _map_src(src: str, pf: dict) -> str:
-    """按平台 api_map 做前缀替换（metax: lc_* -> mc_*；lingspeed 原样）。"""
+    """Apply prefix replacement per the platform api_map (metax: lc_* -> mc_*; lingspeed untouched)."""
     for k, v in pf['api_map'].items():
         src = src.replace(k, v)
     return src
 
 
 # ---------------------------------------------------------------------------
-# 工具链定位
+# Toolchain location
 # ---------------------------------------------------------------------------
 def locate_toolchain(name='lingspeed'):
-    """返回 dict {compiler, home, device_ok, found}；编译器不存在返回 found=False。"""
+    """Return dict {compiler, home, device_ok, found}; found=False when no compiler exists."""
     pf = platform(name)
     compiler = None
     home = None
@@ -277,10 +279,10 @@ def toolchain_summary(tc):
 
 
 # ---------------------------------------------------------------------------
-# C++ 源生成
+# C++ source generation
 # ---------------------------------------------------------------------------
 def _resolve_block(kernel_source):
-    """从 kernel_source[source_tree][mechanism] 提取 BLK。无则默认 256。"""
+    """Extract BLK from kernel_source[source_tree][mechanism]. Defaults to 256 when absent."""
     blk = 256
     try:
         st = kernel_source.get('source_tree') or {}
@@ -301,7 +303,7 @@ def _resolve_block(kernel_source):
 
 
 def _resolve_n(case_or_shape, default_n):
-    """从 case dict（{'shape': [...]}）或裸 shape list 解析元素总数。"""
+    """Resolve the total element count from a case dict ({'shape': [...]}) or a bare shape list."""
     if isinstance(case_or_shape, dict):
         shape = case_or_shape.get('shape') or []
     elif isinstance(case_or_shape, (list, tuple)):
@@ -315,19 +317,19 @@ def _resolve_n(case_or_shape, default_n):
 
 
 def gen_add_cpp(kernel_source, case, mode='compile', n=None, name='lingspeed'):
-    """生成单档 C++ 源文本（按平台参数化）。
+    """Generate the single-file C++ source text (parameterized by platform).
 
-    kernel_source : _s2 产物（source_tree={kind:'template', mechanism:...}，语言 reference）
-    case          : {'id','shape','dtype'} 或裸 shape
-    mode          : compile|verify|perf（模板同一骨架，均含 RESULT 输出）
-    n             : 元素总数；缺省从 case shape 求积
-    name          : platform——lingspeed（lc_* / -x luca）或 metax（mc_* / -x maca）
+    kernel_source : _s2 artifact (source_tree={kind:'template', mechanism:...}, language reference)
+    case          : {'id','shape','dtype'} or bare shape
+    mode          : compile|verify|perf (same template skeleton; all emit RESULT output)
+    n             : total element count; defaults to the product of case shape
+    name          : platform — lingspeed (lc_* / -x luca) or metax (mc_* / -x maca)
     """
     pf = platform(name)
     n = n or _resolve_n(case, default_n=8192)
     blk = _resolve_block(kernel_source)
     grid = (n + blk - 1) // blk
-    # 计时规模自适应：小 n 加大迭代次数，大 n 减少（控制运行时长在 timeout 内）
+    # Timing-scale adaptivity: small n gets more iterations, large n fewer (keep runtime within timeout)
     if n <= 1024:
         warm, segs, seg_iters = 200, 6, 200
     elif n <= 65536:
@@ -356,10 +358,10 @@ def gen_add_cpp(kernel_source, case, mode='compile', n=None, name='lingspeed'):
 
 
 # ---------------------------------------------------------------------------
-# 编译 / 运行 / 解析
+# Compile / run / parse
 # ---------------------------------------------------------------------------
 def compile_cpp(compiler, src_text, out_bin, x_lang='luca', log_path=None, timeout=300):
-    """`$cc -x <lang> src.cpp -o bin` 编译单档 C++。返回 (exit_code, log_text)。"""
+    """Compile the single-file C++ with `$cc -x <lang> src.cpp -o bin`. Returns (exit_code, log_text)."""
     tmp_src = out_bin + '.src.cpp'
     with open(tmp_src, 'w', encoding='utf-8') as f:
         f.write(src_text)
@@ -377,7 +379,7 @@ def compile_cpp(compiler, src_text, out_bin, x_lang='luca', log_path=None, timeo
 
 
 def run_binary(bin_path, timeout=300):
-    """运行编译产物，捕获 stdout/stderr。返回 (exit_code, stdout, stderr)。"""
+    """Run the compiled artifact, capturing stdout/stderr. Returns (exit_code, stdout, stderr)."""
     try:
         r = subprocess.run([bin_path], capture_output=True, text=True, timeout=timeout)
         return r.returncode, r.stdout, r.stderr
@@ -393,7 +395,7 @@ RESULT_RE = re.compile(
 
 
 def parse_output(stdout):
-    """解析程序 stdout：RESULT 行 + @DONE@ 协议。返回 dict（字段可能缺失）。"""
+    """Parse program stdout: RESULT line + @DONE@ protocol. Returns a dict (fields may be absent)."""
     out = {'done': False, 'per_iter_ms': None, 'std_ms': None,
            'rounds': None, 'max_abs_err': None, 'max_rel_err': None, 'bad': None}
     if '@DONE@' in stdout:
@@ -410,10 +412,10 @@ def parse_output(stdout):
 
 
 # ---------------------------------------------------------------------------
-# hook 公共外壳
+# Shared hook shell
 # ---------------------------------------------------------------------------
 def load_payload():
-    """读 stdin JSON payload（_call_hook 契约：{...payload, run_id}）。"""
+    """Read the stdin JSON payload (_call_hook contract: {...payload, run_id})."""
     raw = sys.stdin.read() if not sys.stdin.isatty() else '{}'
     try:
         return json.loads(raw) or {}
@@ -422,13 +424,13 @@ def load_payload():
 
 
 def emit(result):
-    """stdout 尾行 JSON（_call_hook 契约：splitlines()[-1] 被 json.loads）。"""
+    """Trailing-JSON line on stdout (_call_hook contract: splitlines()[-1] gets json.loads-ed)."""
     print(json.dumps(result, ensure_ascii=False))
     sys.stdout.flush()
 
 
 def my_platform(payload) -> str:
-    """从 payload 推断平台：vendor_id 明确指定；否则按工具链存在性探测，再缺省 lingspeed。"""
+    """Infer the platform from the payload: explicit vendor_id wins; otherwise probe toolchain presence, then default to lingspeed."""
     vid = ''
     for key in ('vendor_id', 'vendor', 'platform'):
         v = payload.get(key)
@@ -445,7 +447,7 @@ def my_platform(payload) -> str:
 
 
 def build_or_fail(payload, mode):
-    """compile/verify/perf 共用失败路径：工具链缺失时返回 (False, result_dict)。"""
+    """Shared failure path for compile/verify/perf: returns (False, result_dict) when the toolchain is missing."""
     pf_name = my_platform(payload)
     pf = platform(pf_name)
     tc = locate_toolchain(pf_name)
@@ -461,13 +463,15 @@ def build_or_fail(payload, mode):
 
 
 # ---------------------------------------------------------------------------
-# 集群真机回落（live 模式：本机无厂商工具链时，投递 k8s 探针 pod 真机编译/运行）
-# 通道: adapters/_common/cluster_backend.py（节点/镜像/凭据由 KP_LIVE_* 环境变量注入, 占卡即删）
-# 触发: 仅当 cluster_backend.configured()（KP_LIVE_CLUSTER=1 显式启用）
-# 成功路径（本机有工具链）逐字节不变 → paper 冒烟零漂移。
+# Cluster real-hardware fallback (live mode: when no vendor toolchain is local,
+# dispatch real-hardware compile/run to a k8s probe pod)
+# Channel: adapters/_common/cluster_backend.py (node/image/credentials injected via
+# KP_LIVE_* env vars; card released immediately after use)
+# Trigger: only when cluster_backend.configured() (explicitly enabled by KP_LIVE_CLUSTER=1)
+# The success path (local toolchain present) stays byte-identical -> zero drift in paper smoke tests.
 # ---------------------------------------------------------------------------
 try:
-    import cluster_backend  # noqa: E402  (薄包装 hook 已把 _common 加入 sys.path)
+    import cluster_backend  # noqa: E402  (thin wrapper hooks already added _common to sys.path)
     _CB_OK = True
 except Exception:
     cluster_backend = None  # type: ignore
@@ -475,7 +479,7 @@ except Exception:
 
 
 def cluster_capable() -> bool:
-    """集群真机通道是否可用（本机无工具链时的 live 回落条件）。"""
+    """Whether the cluster real-hardware channel is available (the live fallback condition when no local toolchain exists)."""
     return _CB_OK and cluster_backend is not None and cluster_backend.configured()
 
 
@@ -488,7 +492,7 @@ def _log_write(path, text):
 
 
 def cluster_exec_compile(pf_name, src, workspace, op_id, t0, ts):
-    """集群真机编译（mode=compile 冒烟骨架）。已 emit 则返回 True。"""
+    """Cluster real-hardware compile (mode=compile smoke skeleton). Returns True once emitted."""
     t0 = t0 if t0 else time.monotonic()
     cb = cluster_backend
     try:
@@ -506,7 +510,7 @@ def cluster_exec_compile(pf_name, src, workspace, op_id, t0, ts):
             os.environ.get('KP_LIVE_NODE', '/'),
             r.get('workdir', ''))
         emit({'build_ok': True,
-              'detail': 'lscc@%s 真机编译成功 (pod=%s) %s编译器 %s'
+              'detail': 'lscc@%s compiled on real hardware (pod=%s) %s compiler %s'
                         % (r.get('pod', 'kp-probe'), r.get('pod', ''),
                            pf_label_short(pf_name), host_ref),
               'build_log_path': os.path.join(workspace, op_id + '.build.log'),
@@ -518,7 +522,7 @@ def cluster_exec_compile(pf_name, src, workspace, op_id, t0, ts):
               'duration': round(time.monotonic() - t0, 3)})
         return True
     emit({'build_ok': False,
-          'detail': '集群真机编译失败 exit=%s phase=%s tail=%s'
+          'detail': 'cluster real-hardware compile failed exit=%s phase=%s tail=%s'
                     % (r.get('exit_code'), (r.get('detail') or '')[-80:],
                        (r.get('log') or '')[-300:]),
           'build_log_path': os.path.join(workspace, op_id + '.build.log'),
@@ -529,7 +533,7 @@ def cluster_exec_compile(pf_name, src, workspace, op_id, t0, ts):
 
 
 def cluster_exec_verify(pf_name, src, case, workspace, op_id, t0):
-    """集群真机 verify（运行 RESULT 解析）。已 emit 则返回 True。"""
+    """Cluster real-hardware verify (runs with RESULT parsing). Returns True once emitted."""
     cb = cluster_backend
     fail = lambda why: emit({'max_abs_err': 0.0, 'max_rel_err': 0.0, 'pass': False,  # noqa: E731
                              'detail': why})
@@ -540,24 +544,24 @@ def cluster_exec_verify(pf_name, src, case, workspace, op_id, t0):
         return True
     _log_write(os.path.join(workspace, op_id + '.verify.cluster.log'), r.get('log', ''))
     if not r.get('ok'):
-        fail('集群真机 verify 运行失败 exit=%s tail=%s'
+        fail('cluster real-hardware verify run failed exit=%s tail=%s'
              % (r.get('exit_code'), (r.get('log') or '')[-200:]))
         return True
     parsed = parse_output(r.get('log') or '')
     if not parsed['done'] or parsed['max_abs_err'] is None:
-        fail('集群 verify 无 RESULT 行 tail=%s' % (r.get('log') or '')[-200:])
+        fail('cluster verify has no RESULT line tail=%s' % (r.get('log') or '')[-200:])
         return True
     passed = parsed['max_abs_err'] <= 1e-5
     emit({'max_abs_err': parsed['max_abs_err'], 'max_rel_err': parsed['max_rel_err'],
           'pass': passed,
-          'detail': '集群真机 verify@%s: case=%s abs=%.3e rel=%.3e %s'
+          'detail': 'cluster real-hardware verify@%s: case=%s abs=%.3e rel=%.3e %s'
                     % (r.get('pod', ''), case.get('id'), parsed['max_abs_err'],
                        parsed['max_rel_err'], 'PASS' if passed else 'FAIL')})
     return True
 
 
 def cluster_exec_perf(pf_name, src, case, workspace, op_id, t0):
-    """集群真机 perf（RESULT 行→timing）。已 emit 则返回 True。"""
+    """Cluster real-hardware perf (RESULT line -> timing). Returns True once emitted."""
     cb = cluster_backend
     fail = lambda why: emit({'timing': {'per_iter_ms': None, 'std_ms': None,  # noqa: E731
                                         'rounds': 0, 'samples_used': 0},
@@ -569,16 +573,16 @@ def cluster_exec_perf(pf_name, src, case, workspace, op_id, t0):
         return True
     _log_write(os.path.join(workspace, op_id + '.perf.cluster.log'), r.get('log', ''))
     if not r.get('ok'):
-        fail('集群真机 perf 运行失败 exit=%s tail=%s'
+        fail('cluster real-hardware perf run failed exit=%s tail=%s'
              % (r.get('exit_code'), (r.get('log') or '')[-200:]))
         return True
     parsed = parse_output(r.get('log') or '')
     if not parsed['done'] or parsed['per_iter_ms'] is None:
-        fail('集群 perf 无 RESULT 行 tail=%s' % (r.get('log') or '')[-200:])
+        fail('cluster perf has no RESULT line tail=%s' % (r.get('log') or '')[-200:])
         return True
     emit({'timing': {'per_iter_ms': parsed['per_iter_ms'], 'std_ms': parsed['std_ms'] or 0.0,
                      'rounds': parsed['rounds'] or 0, 'samples_used': parsed['rounds'] or 0},
-          'detail': '集群真机 perf@%s: case=%s per_iter=%.4f ms std=%.4f ms rounds=%d'
+          'detail': 'cluster real-hardware perf@%s: case=%s per_iter=%.4f ms std=%.4f ms rounds=%d'
                     % (r.get('pod', ''), case.get('id'), parsed['per_iter_ms'],
                        parsed['std_ms'] or 0.0, parsed['rounds'] or 0)})
     return True
@@ -592,14 +596,14 @@ def pf_label_short(name):
 
 
 # ---------------------------------------------------------------------------
-# 三 hook 主体（lingspeed/metax 共用；薄包装 hook 直接调用 run_*）
-# 契约与旧 lingspeed hooks/compile|verify|perf.py 逐字段对齐（零漂移），
-# 平台差异（编译器名/-x 语言/API 前缀/设备节点/失败文案）全部由
-# my_platform(payload) -> platform(name) 参数化。
+# The three hook bodies (shared by lingspeed/metax; thin wrapper hooks call run_* directly)
+# The contract aligns field-by-field with the legacy lingspeed hooks/compile|verify|perf.py (zero drift);
+# platform differences (compiler name / -x language / API prefix / device nodes / failure text)
+# are all parameterized via my_platform(payload) -> platform(name).
 # ---------------------------------------------------------------------------
 
 def _load_kernel_def(build_artifact, workspace):
-    """从 compile 存档恢复 kernel 定义；失败返回最小默认（op_id）。"""
+    """Restore the kernel definition from the compile archive; on failure return a minimal default (op_id)."""
     op_id = (build_artifact or {}).get('op_id') or 'add'
     kdef_path = os.path.join(workspace, op_id + '.kernel.json')
     if os.path.exists(kdef_path):
@@ -612,9 +616,9 @@ def _load_kernel_def(build_artifact, workspace):
 
 
 def run_compile(payload=None, name=None):
-    """v3_compile hook 主体：locate toolchain -> gen single-file C++ -> compile。
+    """v3_compile hook body: locate toolchain -> gen single-file C++ -> compile.
 
-    输出 BuildArtifact 兼容契约（同旧 lingspeed compile.py）：
+    Emits a BuildArtifact-compatible contract (same as the legacy lingspeed compile.py):
       {build_ok, detail, build_log_path, artifacts:[{kind,ref}],
        toolchain:{...}, env_snapshot, duration}
     """
@@ -626,13 +630,13 @@ def run_compile(payload=None, name=None):
     op_id = str(kernel_source.get('op_id') or 'add')
     t0 = time.monotonic()
 
-    # ---- 工具链定位（缺编译器 → 明确失败，不 crash） ----
+    # ---- toolchain location (missing compiler -> explicit failure, no crash) ----
     tc = locate_toolchain(pf_name)
     ts = toolchain_summary(tc)
     log_path = os.path.join(workspace, op_id + '.build.log')
     os.makedirs(workspace, exist_ok=True)
     if not tc['found']:
-        # ---- 集群真机回落（live：本机无工具链 → 投递探针 pod 真机编译） ----
+        # ---- cluster real-hardware fallback (live: no local toolchain -> probe pod real-hardware compile) ----
         try:
             src_c = gen_add_cpp(kernel_source, case=None, mode='compile', name=pf_name)
         except Exception:
@@ -642,7 +646,7 @@ def run_compile(payload=None, name=None):
             return
         emit({
             'build_ok': False,
-            'detail': '%s not found; %s toolchain 缺失 '
+            'detail': '%s not found; %s toolchain missing '
                       '(candidates: %s)' % (pf['compiler_label'], pf['runtime_lib'],
                                             ', '.join(x for x in pf['home_candidates'] if x)),
             'build_log_path': log_path,
@@ -651,16 +655,16 @@ def run_compile(payload=None, name=None):
         })
         return
 
-    # ---- 生成单档 C++（mode=compile 冒烟骨架，含 RESULT 输出） ----
+    # ---- generate single-file C++ (mode=compile smoke skeleton, includes RESULT output) ----
     try:
         src = gen_add_cpp(kernel_source, case=None, mode='compile', name=pf_name)
-    except Exception as e:  # 模板生成失败 → 明确失败
+    except Exception as e:  # template generation failure -> explicit failure
         emit({'build_ok': False, 'detail': 'template gen failed: %r' % e,
               'build_log_path': log_path, 'artifacts': [], 'toolchain': ts,
               'env_snapshot': {}, 'duration': round(time.monotonic() - t0, 3)})
         return
 
-    # ---- 编译 ----
+    # ---- compile ----
     out_bin = os.path.join(workspace, op_id + '.bin')
     rc, clog = compile_cpp(tc['compiler'], src, out_bin, x_lang=pf['x_lang'],
                            log_path=log_path)
@@ -673,7 +677,7 @@ def run_compile(payload=None, name=None):
         })
         return
 
-    # ---- 存档 kernel 定义（供 verify/perf 复用同一 kernel/机制） ----
+    # ---- archive the kernel definition (so verify/perf reuse the same kernel/mechanism) ----
     kdef_path = os.path.join(workspace, op_id + '.kernel.json')
     try:
         with open(kdef_path, 'w', encoding='utf-8') as f:
@@ -683,7 +687,7 @@ def run_compile(payload=None, name=None):
 
     emit({
         'build_ok': True,
-        'detail': '%s 单档 %s C++ 编译成功: %s' % (pf['compiler_label'], pf['runtime_lib'],
+        'detail': '%s single-file %s C++ compiled successfully: %s' % (pf['compiler_label'], pf['runtime_lib'],
                                                   os.path.basename(out_bin)),
         'build_log_path': log_path,
         'artifacts': [{'kind': 'kernel_pkg', 'ref': os.path.basename(out_bin)}],
@@ -694,10 +698,10 @@ def run_compile(payload=None, name=None):
 
 
 def run_verify(payload=None, name=None):
-    """v4_verify hook 主体：gen golden-verify C++ -> compile -> run -> pass 判定。
+    """v4_verify hook body: gen golden-verify C++ -> compile -> run -> pass decision.
 
-    输出契约（同旧 lingspeed verify.py）：{max_abs_err, max_rel_err, pass, detail}
-    pass 阈值: abs_err <= 1e-5（fp32，与 pipeline tolerance_config 对齐）。
+    Emits the same contract as the legacy lingspeed verify.py: {max_abs_err, max_rel_err, pass, detail}
+    pass threshold: abs_err <= 1e-5 (fp32, aligned with the pipeline tolerance_config).
     """
     payload = payload if payload is not None else load_payload()
     pf_name = name or my_platform(payload)
@@ -709,7 +713,7 @@ def run_verify(payload=None, name=None):
 
     tc = locate_toolchain(pf_name)
     if not tc['found']:
-        # ---- 集群真机回落（live：本机无工具链 → 真机 verify） ----
+        # ---- cluster real-hardware fallback (live: no local toolchain -> real-hardware verify) ----
         kernel_def = _load_kernel_def(ba, workspace)
         op_id = kernel_def.get('op_id') or 'add'
         try:
@@ -720,14 +724,14 @@ def run_verify(payload=None, name=None):
             cluster_exec_verify(pf_name, src_v, case, workspace, op_id, t0)
             return
         emit({'max_abs_err': 0.0, 'max_rel_err': 0.0, 'pass': False,
-              'detail': '%s not found (%s toolchain 缺失)'
+              'detail': '%s not found (%s toolchain missing)'
                         % (pf['compiler_label'], pf['runtime_lib'])})
         return
 
     kernel_def = _load_kernel_def(ba, workspace)
     op_id = kernel_def.get('op_id') or 'add'
 
-    # ---- 生成带 golden 的 verify 程序 -> 编译 -> 运行 ----
+    # ---- generate the golden-verify program -> compile -> run ----
     try:
         src = gen_add_cpp(kernel_def, case, mode='verify', name=pf_name)
     except Exception as e:
@@ -765,11 +769,11 @@ def run_verify(payload=None, name=None):
 
 
 def run_perf(payload=None, name=None):
-    """v5_profile hook 主体：gen timing C++ -> compile -> run -> RESULT 行解析。
+    """v5_profile hook body: gen timing C++ -> compile -> run -> RESULT line parsing.
 
-    输出契约（同旧 lingspeed perf.py）：
+    Emits the same contract as the legacy lingspeed perf.py:
       {timing: {per_iter_ms, std_ms, rounds, samples_used}, detail}
-    pipeline 消费: per_iter_ms(ms→us)、std_ms(→us)、rounds|samples_used(→n_samples)。
+    Consumed by the pipeline: per_iter_ms(ms->us), std_ms(->us), rounds|samples_used(->n_samples).
     """
     payload = payload if payload is not None else load_payload()
     pf_name = name or my_platform(payload)
@@ -781,7 +785,7 @@ def run_perf(payload=None, name=None):
 
     tc = locate_toolchain(pf_name)
     if not tc['found']:
-        # ---- 集群真机回落（live：本机无工具链 → 真机 perf） ----
+        # ---- cluster real-hardware fallback (live: no local toolchain -> real-hardware perf) ----
         kernel_def = _load_kernel_def(ba, workspace)
         op_id = kernel_def.get('op_id') or 'add'
         try:
@@ -793,7 +797,7 @@ def run_perf(payload=None, name=None):
             return
         emit({'timing': {'per_iter_ms': None, 'std_ms': None,
                          'rounds': 0, 'samples_used': 0},
-              'detail': '%s not found (%s toolchain 缺失)'
+              'detail': '%s not found (%s toolchain missing)'
                         % (pf['compiler_label'], pf['runtime_lib'])})
         return
 
@@ -841,7 +845,7 @@ def run_perf(payload=None, name=None):
 
 
 # ---------------------------------------------------------------------------
-# 自检入口（--toolchain / -t [platform]）
+# Self-check entry (--toolchain / -t [platform])
 # ---------------------------------------------------------------------------
 if __name__ == '__main__':
     which = 'lingspeed'

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""ascend 适配器 status（04 §3 接口契约）：能力状态摘要。"""
+"""ascend adapter status (04 §3 interface contract): capability status summary."""
 import json
 import sys
 import os

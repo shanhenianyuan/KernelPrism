@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""verify.py — 灵汐 (Lingspeed) LUCA 适配器 · v4_verify hook（薄包装）
+"""verify.py - Lingspeed LUCA adapter v4_verify hook (thin wrapper)
 
-主体在 adapters/_common/mxcagen.py → run_verify()（平台参数化，lingspeed/metax 共用）。
-输出契约不变：{max_abs_err, max_rel_err, pass, detail}
+Core logic lives in adapters/_common/mxcagen.py -> run_verify() (platform-parameterized,
+shared by lingspeed/metax). Output contract unchanged:
+{max_abs_err, max_rel_err, pass, detail}
 """
 import os
 import sys

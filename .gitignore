@@ -4,17 +4,17 @@ __pycache__/
 .venv/
 *.egg-info/
 
-# KernelPrism 运行产物（用户输出铁律: anvil_output/ 不入库）
+# KernelPrism run artifacts (user output rule: anvil_output/ is never committed)
 anvil_output/
 kp-runs/
 *.cluster.log
 
-# 集群/凭据（红线: 仓库不携带任何集群配置）
+# Cluster/credentials (red line: the repo must not carry any cluster configuration)
 *.kubeconfig
 kubeconfig*
 .git-credentials
 
-# 本地临时
+# Local temporary files
 scratch/
 /tmp/
 .DS_Store

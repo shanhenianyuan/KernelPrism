@@ -1,17 +1,17 @@
 {
-  "microarch_summary": "Metax C550: MXMACA 计算单元, 片上多级存储, 类 CUDA 三括号编程模型 (mxcc -x maca)",
-  "memory_hierarchy": "全局显存 + 片上共享内存; 与领速 LUCA 同源换名 (lc_runtime.h↔mc_runtime.h)",
-  "tensor_units": "MXMACA 矩阵单元; kernel 以 __global__ + <<<grid, blk, 0, 0>>> 启动",
-  "vector_units": "向量通道待真机实证",
-  "memory_alignment": "待真机实证",
-  "memory_bandwidth": "待真机实证",
-  "launch_overhead": "kernel launch 开销相对单算子执行不可忽略 → 启动受限时优先算子融合",
-  "onchip_memory": "片上容量待真机实证; 大 tile 需多级切分",
-  "numeric_units": "fp32 基准验证通过 (max_abs_err <= 1e-5); fp16/bf16 支持待真机实证",
+  "microarch_summary": "Metax C550: MXMACA compute units, on-chip multi-level storage, CUDA-like triple-angle-bracket programming model (mxcc -x maca)",
+  "memory_hierarchy": "Global memory + on-chip shared memory; same origin as Lingspeed LUCA, renamed (lc_runtime.h↔mc_runtime.h)",
+  "tensor_units": "MXMACA matrix units; kernels launched with __global__ + <<<grid, blk, 0, 0>>>",
+  "vector_units": "Vector channels pending real-hardware verification",
+  "memory_alignment": "Pending real-hardware verification",
+  "memory_bandwidth": "Pending real-hardware verification",
+  "launch_overhead": "kernel launch overhead is non-negligible relative to single-op execution → prefer operator fusion when launch-bound",
+  "onchip_memory": "On-chip capacity pending real-hardware verification; large tiles require multi-level tiling",
+  "numeric_units": "fp32 baseline verification passed (max_abs_err <= 1e-5); fp16/bf16 support pending real-hardware verification",
   "isa": "MXMACA DSL: mc_runtime.h / mc_common.h, mcMalloc / mcFree / mcMemcpy(HostToDevice|DeviceToHost), mcGetErrorString, mcSuccess",
   "constraints": [
-    "双卡同源: lc_*↔mc_*、-x luca↔-x maca、/opt/luca↔/opt/maca（对照表实证 2026-11-23）",
-    "编译器位: /opt/maca/bin/mxcc（同 lscc 位，待真机实证）",
-    "设备节点: /dev/mxc0, /dev/metax_gpu, /dev/mxc（待真机实证）"
+    "Dual-card same origin: lc_*↔mc_*, -x luca↔-x maca, /opt/luca↔/opt/maca (mapping verified 2026-11-23)",
+    "Compiler binary: /opt/maca/bin/mxcc (same location as lscc, pending real-hardware verification)",
+    "Device nodes: /dev/mxc0, /dev/metax_gpu, /dev/mxc (pending real-hardware verification)"
   ]
 }

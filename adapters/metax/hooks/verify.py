@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""verify.py — 沐曦 (Metax MXMACA) 适配器 · v4_verify hook（薄包装）
+"""verify.py - Metax (MXMACA) adapter v4_verify hook (thin wrapper)
 
-主体在 adapters/_common/mxcagen.py → run_verify(name='metax')（平台参数化）。
-输出契约与 lingspeed 对齐：{max_abs_err, max_rel_err, pass, detail}
+Core logic lives in adapters/_common/mxcagen.py -> run_verify(name='metax')
+(platform-parameterized). Output contract aligned with lingspeed:
+{max_abs_err, max_rel_err, pass, detail}
 """
 import os
 import sys

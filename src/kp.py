@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""KernelPrism — 全 GPU 厂商智能算子开发平台（anvil 的 app）
+"""KernelPrism — intelligent operator development platform for all GPU vendors (anvil app).
 
-CLI 入口: kp run / kp vendor
-输出约定: anvil_output/kp-runs/<run_id>/（用户输出铁律, 不落 /tmp）
+CLI entry: kp run / kp vendor
+Output convention: anvil_output/kp-runs/<run_id>/ (user contract: never write under /tmp)
 """
 from __future__ import annotations
 
@@ -25,10 +25,10 @@ from vendor import VendorRegistry  # noqa: E402
 
 
 def default_output_root() -> str:
-    """遵循用户约定: 相对当前工作目录的 anvil_output/. """
+    """Per user convention: anvil_output/ relative to the current working directory. """
     here = os.getcwd()
     candidate = os.path.join(here, 'anvil_output')
-    # 向上找已有 anvil_output（用户约定在项目根）
+    # Walk upward looking for an existing anvil_output (user convention: at project root)
     for _ in range(6):
         if os.path.isdir(candidate):
             return candidate
@@ -41,7 +41,7 @@ def default_output_root() -> str:
 
 
 def make_run_id(vendor: str, task: str) -> str:
-    """run_id: kp-<vendor>-<task>-<YYYYMMDD>-<hex8>（03 §9）. """
+    """run_id: kp-<vendor>-<task>-<YYYYMMDD>-<hex8> (spec 03 §9). """
     stamp = time.strftime('%Y%m%d')
     h = secrets.token_hex(4)
     return f"kp-{vendor}-{task}-{stamp}-{h}"
@@ -52,24 +52,24 @@ def cmd_vendor(args: argparse.Namespace) -> int:
     if args.action == 'list':
         rows = reg.list_all()
         if not rows:
-            print('(无已注册适配器)')
+            print('(no registered adapters)')
             return 0
-        # 宽度对齐打印能力矩阵
+        # Print capability matrix with width-aligned columns
         hdr = f"{'vendor':<12}{'version':<10}{'devices':<24}{'stages':<20}health"
         print(hdr)
         print('-' * len(hdr))
         for r in rows:
-            stages = ','.join(r['stages_list']) if r['stages_list'] else '(通用兜底)'
+            stages = ','.join(r['stages_list']) if r['stages_list'] else '(generic fallback)'
             print(f"{r['vendor_id']:<12}{r['version']:<10}{','.join(r['devices'])[:22]:<24}"
                   f"{stages:<20}{r['health']}")
         return 0
     if args.action == 'add':
         v = reg.add(args.vendor_id)
-        print(f"适配器已登记: {v['vendor_id']} v{v['version']}  "
-              f"stages={','.join(v['stages_list']) or '(通用兜底)'} "
+        print(f"Adapter registered: {v['vendor_id']} v{v['version']}  "
+              f"stages={','.join(v['stages_list']) or '(generic fallback)'} "
               f"devices={','.join(v['devices'])}")
         return 0
-    print(f"未知 vendor 动作: {args.action}", file=sys.stderr)
+    print(f"unknown vendor action: {args.action}", file=sys.stderr)
     return 2
 
 
@@ -78,10 +78,10 @@ def cmd_run(args: argparse.Namespace) -> int:
     vendor_id = args.vendor or 'ascend'
     vendor = reg.load(vendor_id)
     if vendor is None:
-        print(f"适配器未找到: {vendor_id}（先 kp vendor add {vendor_id}）", file=sys.stderr)
+        print(f"adapter not found: {vendor_id} (run 'kp vendor add {vendor_id}' first)", file=sys.stderr)
         return 1
 
-    # 模型级意图（03 §9 端到端意图 entry）: --model-goal '吞吐'
+    # Model-level goal (spec 03 §9 end-to-end intent entry) via --model-goal, e.g. 'throughput'
     model_goal = getattr(args, 'model_goal', None)
 
     run_root = Path(default_output_root()) / 'kp-runs'
@@ -105,34 +105,34 @@ def cmd_run(args: argparse.Namespace) -> int:
     if not ok:
         return 1
     print(f"\n@DONE@ run_id={run_id} status=OK")
-    print(f"产物目录: {run_dir}")
+    print(f"Artifacts directory: {run_dir}")
     return 0
 
 
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(
         prog='kp',
-        description='KernelPrism — 全 GPU 厂商智能算子开发平台 (anvil app)',
+        description='KernelPrism — intelligent operator development platform for all GPU vendors (anvil app)',
     )
     p.add_argument('--anvil-root', default=os.environ.get('ANVIL_ROOT', ''),
-                   help='anvil 根目录（适配器定位）；缺省仓库自探测')
+                   help='anvil root dir (adapter discovery); auto-detected from the repo if omitted')
     sub = p.add_subparsers(dest='cmd', required=True)
 
-    vp = sub.add_parser('vendor', help='厂商适配器管理')
+    vp = sub.add_parser('vendor', help='manage vendor adapters')
     vsub = vp.add_subparsers(dest='action', required=True)
-    vsub.add_parser('list', help='列出适配器与能力矩阵')
-    addp = vsub.add_parser('add', help='登记适配器')
+    vsub.add_parser('list', help='list adapters and capability matrix')
+    addp = vsub.add_parser('add', help='register an adapter')
     addp.add_argument('vendor_id', nargs='?', default='ascend')
 
-    rp = sub.add_parser('run', help='跑 8 段流水线')
-    rp.add_argument('task', help='任务名（如 add / matmul / gqa）')
-    rp.add_argument('--vendor', default='ascend', help='厂商适配器 id')
+    rp = sub.add_parser('run', help='run the 8-stage pipeline')
+    rp.add_argument('task', help='task name (e.g. add / matmul / gqa)')
+    rp.add_argument('--vendor', default='ascend', help='vendor adapter id')
     rp.add_argument('--model-goal', default=None,
-                    help='模型级目标（03 §9 端到端意图，如"吞吐"）；给出后启用模型级闭环门禁')
+                    help='model-level goal (spec 03 §9 end-to-end intent, e.g. "throughput"); enables model-level closed-loop gating when set')
     rp.add_argument('--exec-mode', default='paper', choices=['paper', 'live'],
-                    help='paper=纸面冒烟（无硬件也全 8 段走通）；live=真机执行（需 probe available）')
-    rp.add_argument('--budget-iters', type=int, default=3, help='段7 进化迭代预算')
-    rp.add_argument('--budget-minutes', type=float, default=60.0, help='全局分钟预算')
+                    help='paper=paper smoke run (all 8 stages complete without hardware); live=real-device execution (requires probe available)')
+    rp.add_argument('--budget-iters', type=int, default=3, help='stage-7 evolution iteration budget')
+    rp.add_argument('--budget-minutes', type=float, default=60.0, help='global minute budget')
 
     args = p.parse_args(argv)
     if args.cmd == 'vendor':

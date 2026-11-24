@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""lingspeed 适配器 probe（04 §3 接口契约）：设备探测。
+"""lingspeed adapter probe (04 §3 interface contract): device discovery.
 
-返回:
+Returns:
   {available: bool, devices: [...], toolchain_ok: bool, versions: {...}}
 
-Phase 1 纸面冒烟：本机无灵汐硬件时 available=false 但 toolchain_ok=template，
-平台照常以通用兜底跑通 8 段。
-真机部署（GPU 节点，/dev/lscd 已存在）后此文件自动切换 live。
+Phase 1 paper smoke test: with no Lingspeed hardware on this machine available=false
+but toolchain_ok=template, and the platform still runs all 8 stages via the generic
+fallback.
+After live deployment (GPU node with /dev/lscd present) this file auto-switches to live.
 """
 import json
 import os
@@ -18,10 +19,10 @@ from pathlib import Path
 ADAPTER_DIR = Path(__file__).resolve().parent.parent
 VENDORKB = os.path.join(ADAPTER_DIR, 'vendorkb')
 
-# 灵汐工具链真身（实证 2026-11）: /opt/luca symlink 悬空，必须用实链
+# real Lingspeed toolchain (verified 2026-11): the /opt/luca symlink is dangling, must use the real path
 LUCA_REAL = os.environ.get('LUCA_PATH') or '/opt/luca-3.8.0'
 LSCC = os.path.join(LUCA_REAL, 'lsgpu_llvm', 'bin', 'lscc')
-DEV_NODE = '/dev/lscd'  # crw------- 235,0，无需 mknod
+DEV_NODE = '/dev/lscd'  # crw------- 235,0, no mknod needed
 
 
 def probe() -> dict:
@@ -44,10 +45,11 @@ def probe() -> dict:
             "adapter": "1.0.0",
             "environment": "paper-template" if not hw_available else "live"
         },
-        "note": ("本机未探测到灵汐工具链/设备 → 平台以通用兜底跑通 8 段"
-                 "（Phase 1 纸面冒烟）；真机环境（/dev/lscd + /opt/luca-3.8.0）"
-                 "自动切换 live" if not hw_available else
-                 f"灵汐设备就绪: {DEV_NODE}, lscc={LSCC}")
+        "note": ("no Lingspeed toolchain/device detected on this machine -> "
+                 "platform runs all 8 stages via generic fallback "
+                 "(Phase 1 paper smoke); real environment (/dev/lscd + /opt/luca-3.8.0) "
+                 "auto-switches to live" if not hw_available else
+                 f"Lingspeed device ready: {DEV_NODE}, lscc={LSCC}")
     }
 
 

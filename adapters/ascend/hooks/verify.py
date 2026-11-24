@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""ascend 适配器 v4_verify hook（04 §3 接口契约）：torch_npu 真机 golden 对照。
+"""ascend adapter v4_verify hook (04 §3 interface contract): torch_npu live golden comparison.
 
-输入(stdin JSON payload):
+Input (stdin JSON payload):
   {kernel_source, build_artifact, workspace, run_id}
-  真机载体：镜像自带 torch_npu；probe3 已实证 device_count()=1、
-  add 双输入精度对照 match=True err=0.0。
+  Live-machine carrier: the image ships torch_npu; probe3 verified device_count()=1
+  and the two-input add precision comparison match=True err=0.0.
 
-输出(stdout 最后一行 JSON)（与 pipeline _s5 live 读取字段对齐）:
+Output (stdout last-line JSON) (field-aligned with the pipeline _s5 live reader):
   {match: bool, err: float, pass: bool, max_abs_err: float, max_rel_err: float,
    detail, device: {count, name}, duration, artifact_path}
 """
@@ -24,9 +24,9 @@ def verify(kernel_source: dict, workspace: str) -> dict:
            'detail': '', 'device': {}, 'duration': 0.0}
     try:
         import torch
-        import torch_npu  # noqa: F401   # 导入即注册 npu backend
+        import torch_npu  # noqa: F401   # importing registers the npu backend
     except Exception as e:  # noqa: BLE001
-        rep['detail'] = f'torch_npu 不可用: {e}'
+        rep['detail'] = f'torch_npu unavailable: {e}'
         rep['duration'] = round(time.monotonic() - t0, 3)
         return rep
 
@@ -34,16 +34,16 @@ def verify(kernel_source: dict, workspace: str) -> dict:
         n = torch.npu.device_count()
         rep['device']['count'] = n
         if n < 1:
-            rep['detail'] = '未发现可用 NPU'
+            rep['detail'] = 'no usable NPU found'
             rep['duration'] = round(time.monotonic() - t0, 3)
             return rep
         rep['device']['name'] = torch.npu.get_device_name(0)
     except Exception as e:  # noqa: BLE001
-        rep['detail'] = f'NPU 枚举失败: {e}'
+        rep['detail'] = f'NPU enumeration failed: {e}'
         rep['duration'] = round(time.monotonic() - t0, 3)
         return rep
 
-    # Golden 对照：AddCustom（float16）双输入 add
+    # Golden comparison: AddCustom (float16) two-input add
     t_ev = time.monotonic()
     try:
         a = torch.randn(4096, dtype=torch.float16, device='npu')
@@ -52,14 +52,14 @@ def verify(kernel_source: dict, workspace: str) -> dict:
         ref = a.cpu().float() + b.cpu().float()
         got = out.cpu().float()
         err = float((got - ref).abs().max())
-        # 容差对齐 pipeline tolerance_config: fp16 abs=1e-2（0.001953125=2^-9 为纯 fp16 舍入噪声）
+        # tolerance aligned with pipeline tolerance_config: fp16 abs=1e-2 (0.001953125=2^-9 is pure fp16 rounding noise)
         match = err < 1e-2
         rep.update({'match': match, 'err': err, 'pass': match,
                     'max_abs_err': err, 'max_rel_err': 0.0 if match else None,
                     'detail': f'torch_npu add golden: max-abs-err={err:.2e} (tol=1e-2)',
                     'measure_sec': round(time.monotonic() - t_ev, 4)})
     except Exception as e:  # noqa: BLE001
-        rep['detail'] = f'golden 执行失败: {e}'
+        rep['detail'] = f'golden execution failed: {e}'
     rep['duration'] = round(time.monotonic() - t0, 3)
     return rep
 

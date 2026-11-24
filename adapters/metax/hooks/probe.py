@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""metax 适配器 probe（04 §3 接口契约）：设备探测。
+"""metax adapter probe (04 §3 interface contract): device discovery.
 
-返回:
+Returns:
   {available: bool, devices: [...], toolchain_ok: bool, versions: {...}}
 
-Phase 1 纸面冒烟：本机无沐曦硬件时 available=false 但 toolchain_ok=template，
-平台照常以通用兜底跑通 8 段。
-真机部署（/opt/maca + /dev/mxc0）后此文件自动切换 live。
+Phase 1 paper smoke test: with no Metax hardware on this machine available=false
+but toolchain_ok=template, and the platform still runs all 8 stages via the generic
+fallback.
+After live deployment (/opt/maca + /dev/mxc0) this file auto-switches to live.
 """
 import json
 import os
@@ -17,10 +18,10 @@ from pathlib import Path
 ADAPTER_DIR = Path(__file__).resolve().parent.parent
 VENDORKB = os.path.join(ADAPTER_DIR, 'vendorkb')
 
-# 沐曦工具链真身（对照实证）: /opt/maca/bin/mxcc（同 lscc 位）
+# real Metax toolchain (verified by comparison): /opt/maca/bin/mxcc (same slot as lscc)
 MACA_REAL = os.environ.get('MACA_PATH') or '/opt/maca'
 MXCC = os.path.join(MACA_REAL, 'bin', 'mxcc')
-DEV_NODES = ['/dev/mxc0', '/dev/metax_gpu', '/dev/mxc']  # 待真机实证
+DEV_NODES = ['/dev/mxc0', '/dev/metax_gpu', '/dev/mxc']  # awaiting live verification
 
 
 def probe() -> dict:
@@ -43,10 +44,11 @@ def probe() -> dict:
             "adapter": "1.0.0",
             "environment": "paper-template" if not hw_available else "live"
         },
-        "note": ("本机未探测到沐曦工具链/设备 → 平台以通用兜底跑通 8 段"
-                 "（Phase 1 纸面冒烟）；真机环境（/dev/mxc0 + /opt/maca/bin/mxcc）"
-                 "自动切换 live" if not hw_available else
-                 f"沐曦设备就绪: {','.join(DEV_NODES)}, mxcc={MXCC}")
+        "note": ("no Metax toolchain/device detected on this machine -> "
+                 "platform runs all 8 stages via generic fallback "
+                 "(Phase 1 paper smoke); real environment (/dev/mxc0 + /opt/maca/bin/mxcc) "
+                 "auto-switches to live" if not hw_available else
+                 f"Metax device ready: {','.join(DEV_NODES)}, mxcc={MXCC}")
     }
 
 

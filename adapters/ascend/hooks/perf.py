@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""ascend 适配器 v5_profile hook（04 §3 接口契约）：真实计时。
+"""ascend adapter v5_profile hook (04 §3 interface contract): real timing.
 
-输入(stdin JSON payload):
+Input (stdin JSON payload):
   {kernel_source, build_artifact, workspace, run_id}
 
-输出(stdout 最后一行 JSON):
+Output (stdout last-line JSON):
   {profiled: bool, detail, timing: {n_iter, elapsed_ms, per_iter_ms},
    device, duration}
 """
@@ -22,7 +22,7 @@ def profile_kernel(kernel_source: dict, workspace: str) -> dict:
         import torch
         import torch_npu  # noqa: F401
     except Exception as e:  # noqa: BLE001
-        rep['detail'] = f'torch_npu 不可用: {e}'
+        rep['detail'] = f'torch_npu unavailable: {e}'
         rep['duration'] = round(time.monotonic() - t0, 3)
         return rep
 
@@ -30,22 +30,24 @@ def profile_kernel(kernel_source: dict, workspace: str) -> dict:
         n = torch.npu.device_count()
         rep['device']['count'] = n
         if n < 1:
-            rep['detail'] = '未发现可用 NPU'
+            rep['detail'] = 'no usable NPU found'
             rep['duration'] = round(time.monotonic() - t0, 3)
             return rep
         rep['device']['name'] = torch.npu.get_device_name(0)
     except Exception as e:  # noqa: BLE001
-        rep['detail'] = f'NPU 枚举失败: {e}'
+        rep['detail'] = f'NPU enumeration failed: {e}'
         rep['duration'] = round(time.monotonic() - t0, 3)
         return rep
 
-    # 稳定计时三件套（借鉴 Kernel-Smith 评估协议，2026-11-23）：
-    #   ① warm-up 预跑消除初始化抖动; ② 多轮采样取中位数 + 剔除离群; ③ 报告
-    #   波动(median/std)供段6 门禁与优化段决策使用。
-    # 被测基准 = torch.add(4096, fp16) 原生算子（当前适配器占位基准）。
-    n_iter = 50        # 每轮迭代数
-    warmup = 20        # warm-up 预跑（不计数）
-    rounds = 7         # 采样轮数（独立计时, 取中位数）
+    # Stable-timing trio (borrowed from the Kernel-Smith timing protocol, 2026-11-23):
+    #   1) warm-up pre-run removes init jitter; 2) multi-round sampling: take the median
+    #   and remove outliers; 3) report variance (median/std) for stage-6 gating and
+    #   optimization decisions.
+    # Benchmark under test = native torch.add(4096, fp16) op (current adapter
+    # placeholder benchmark).
+    n_iter = 50        # iterations per round
+    warmup = 20        # warm-up pre-run (not counted)
+    rounds = 7         # sampling rounds (independent timing, take median)
     outlier_sigma = 2.0
     try:
         a = torch.randn(4096, dtype=torch.float16, device='npu')
@@ -60,7 +62,7 @@ def profile_kernel(kernel_source: dict, workspace: str) -> dict:
                 torch.add(a, b)
             torch.npu.synchronize()
             samples_ms.append((time.perf_counter() - t_ev) * 1000.0 / n_iter)
-        # 去离群（median ± 2·std 之外剔除），再取 median 为稳定值
+        # Remove outliers (outside median +/- 2*std), then re-take the median as the stable value
         sorted_s = sorted(samples_ms)
         n = len(sorted_s)
         med = sorted_s[n // 2] if n % 2 else (sorted_s[n // 2 - 1] + sorted_s[n // 2]) / 2.0
@@ -73,8 +75,8 @@ def profile_kernel(kernel_source: dict, workspace: str) -> dict:
         kept_std = (sum((x - per_iter_ms) ** 2 for x in kept) / len(kept)) ** 0.5
         rep.update({
             'profiled': True,
-            'detail': (f'add(4096,fp16) 稳定计时: median={per_iter_ms:.4f} ms/iter '
-                       f'(warmup={warmup}, rounds={rounds}, 去离群 {n_outliers}/{n}, '
+            'detail': (f'add(4096,fp16) stable timing: median={per_iter_ms:.4f} ms/iter '
+                       f'(warmup={warmup}, rounds={rounds}, outliers-removed {n_outliers}/{n}, '
                        f'std={kept_std:.4f})'),
             'timing': {
                 'n_iter': n_iter, 'rounds': rounds, 'warmup': warmup,
@@ -88,7 +90,7 @@ def profile_kernel(kernel_source: dict, workspace: str) -> dict:
             },
         })
     except Exception as e:  # noqa: BLE001
-        rep['detail'] = f'profile 执行失败: {e}'
+        rep['detail'] = f'profile execution failed: {e}'
     rep['duration'] = round(time.monotonic() - t0, 3)
     return rep
 

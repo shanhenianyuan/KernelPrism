@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""perf.py — 灵汐 (Lingspeed) LUCA 适配器 · v5_profile hook（薄包装）
+"""perf.py - Lingspeed LUCA adapter v5_profile hook (thin wrapper)
 
-主体在 adapters/_common/mxcagen.py → run_perf()（平台参数化，lingspeed/metax 共用）。
-输出契约不变：{timing: {per_iter_ms, std_ms, rounds, samples_used}, detail}
+Core logic lives in adapters/_common/mxcagen.py -> run_perf() (platform-parameterized,
+shared by lingspeed/metax). Output contract unchanged:
+{timing: {per_iter_ms, std_ms, rounds, samples_used}, detail}
 """
 import os
 import sys

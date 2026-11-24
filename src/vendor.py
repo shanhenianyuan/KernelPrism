@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""KernelPrism 厂商适配器注册表（04-vendor-spi §2 manifest 契约落地）。
+"""KernelPrism vendor adapter registry (implements the 04-vendor-spi §2 manifest contract).
 
-- 适配器目录: <anvil_root>/apps/kernel-prism/adapters/<vendor_id>/manifest.json
-- 最小可用适配器 = 只有一个 manifest.json（纯声明），平台通用能力兜底 8 段。
-- License 隔离: 平台零厂商代码；厂商代码只在适配器目录。
+- Adapter directory: <anvil_root>/apps/kernel-prism/adapters/<vendor_id>/manifest.json
+- A minimal usable adapter is a single manifest.json (declaration only), backed by the
+  platform's generic 8-stage capability.
+- License isolation: the platform runs zero vendor code; vendor code lives only in its
+  adapter directory.
 """
 from __future__ import annotations
 
@@ -28,14 +30,15 @@ LICENSE_RESTRICT = {
 
 def _require(cond: bool, msg: str):
     if not cond:
-        raise ValueError(f"manifest 校验失败: {msg}")
+        raise ValueError(f"manifest validation failed: {msg}")
 
 
 class VendorRegistry:
-    """适配器发现 + schema 校验 + 生命周期登记。"""
+    """Adapter discovery + schema validation + lifecycle registration."""
 
     def __init__(self, anvil_root: str = ''):
-        """anvil_root 缺省时仓库自探测（<repo>/adapters），兼容 anvil app 装配形态。"""
+        """When anvil_root is empty, auto-detect the repo (<repo>/adapters), so the
+        registry works in either a standalone repo or an assembled anvil app."""
         if not anvil_root:
             anvil_root = os.environ.get('ANVIL_ROOT', '')
         if anvil_root:
@@ -46,13 +49,13 @@ class VendorRegistry:
         self.anvil_root = anvil_root
         self.registry_path = os.path.join(self.adapters_dir, '.registry.json')
 
-    # ---------- 发现 ----------
+    # ---------- discovery ----------
 
     def _adapter_dir(self, vendor_id: str) -> str:
         return os.path.join(self.adapters_dir, vendor_id)
 
     def load(self, vendor_id: str) -> Optional[Dict[str, Any]]:
-        """加载 + 校验 manifest（不落地注册表）。"""
+        """Load and validate a manifest (does not touch the registry)."""
         mpath = os.path.join(self._adapter_dir(vendor_id), 'manifest.json')
         if not os.path.exists(mpath):
             return None
@@ -83,16 +86,17 @@ class VendorRegistry:
                 rows.append(m)
         return rows
 
-    # ---------- 生命周期 ----------
+    # ---------- lifecycle ----------
 
     def add(self, vendor_id: str) -> Dict[str, Any]:
         m = self.load(vendor_id)
         if m is None:
             raise FileNotFoundError(
-                f"适配器目录不存在: {self._adapter_dir(vendor_id)}（应含 manifest.json）")
+                f"adapter directory not found: {self._adapter_dir(vendor_id)} (expected manifest.json)")
         lic = m.get('license', {})
         if lic.get('install_consent_required'):
-            # consent 已是部署动作（用户铁律下由人工显式确认后调用），这里做记录
+            # consent is a deployment-time action (invoked only after explicit human
+            # confirmation per user policy); record it here
             self._record_registry(vendor_id, m)
         return m
 
@@ -114,29 +118,29 @@ class VendorRegistry:
             json.dump(reg, f, ensure_ascii=False, indent=2)
         os.replace(tmp, self.registry_path)
 
-    # ---------- 校验 ----------
+    # ---------- validation ----------
 
     def validate_manifest(self, m: Dict[str, Any]) -> None:
-        _require(isinstance(m, dict), 'manifest 必须是 JSON 对象')
+        _require(isinstance(m, dict), 'manifest must be a JSON object')
         missing = MANIFEST_SCHEMA - set(m)
-        _require(not missing, f'缺少字段: {sorted(missing)}')
+        _require(not missing, f'missing fields: {sorted(missing)}')
         _require(m['vendor_id'].isalnum() and m['vendor_id'].islower(),
-                 f"vendor_id 必须为小写字母数字: {m['vendor_id']}")
+                 f"vendor_id must be lowercase alphanumeric: {m['vendor_id']}")
         _require(m['vendor_id'] == os.path.basename(m.get('_adapter_dir', m['vendor_id'])) or
                  '_adapter_dir' not in m,
-                 'vendor_id 必须与目录名一致')
-        _require(isinstance(m.get('devices'), list) and m['devices'], 'devices 非空列表')
-        _require(isinstance(m.get('dsls'), list) and m['dsls'], 'dsls 非空列表')
+                 'vendor_id must match its directory name')
+        _require(isinstance(m.get('devices'), list) and m['devices'], 'devices must be a non-empty list')
+        _require(isinstance(m.get('dsls'), list) and m['dsls'], 'dsls must be a non-empty list')
         st = m.get('stages', {})
-        _require(isinstance(st, dict), 'stages 必须为 dict')
+        _require(isinstance(st, dict), 'stages must be a dict')
         for sid in st:
-            _require(sid in STAGE_IDS, f'未知 stage id: {sid}')
-            _require('enabled' in st[sid], f'stages.{sid}.enabled 缺失')
+            _require(sid in STAGE_IDS, f'unknown stage id: {sid}')
+            _require('enabled' in st[sid], f'stages.{sid}.enabled is missing')
         lic = m.get('license', {})
-        _require(isinstance(lic, dict) and 'id' in lic, 'license.id 缺失')
+        _require(isinstance(lic, dict) and 'id' in lic, 'license.id is missing')
         ep = m.get('entrypoints', {})
-        _require(isinstance(ep, dict), 'entrypoints 必须为 dict')
+        _require(isinstance(ep, dict), 'entrypoints must be a dict')
         for slot in ('probe', 'status'):
             p = ep.get(slot)
             if p:
-                _require(isinstance(p, str), f'entrypoints.{slot} 必须为相对路径字符串')
+                _require(isinstance(p, str), f'entrypoints.{slot} must be a relative path string')

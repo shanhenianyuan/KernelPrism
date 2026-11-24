@@ -1,6 +1,6 @@
 {
   "vendor_id": "ascend",
-  "display_name": "华为昇腾 (Ascend)",
+  "display_name": "Huawei Ascend",
   "version": "2.4.0",
   "source": {
     "type": "local",

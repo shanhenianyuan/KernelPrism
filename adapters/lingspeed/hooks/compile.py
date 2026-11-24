@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""compile.py — 灵汐 (Lingspeed) LUCA 适配器 · v3_compile hook（薄包装）
+"""compile.py - Lingspeed LUCA adapter v3_compile hook (thin wrapper)
 
-主体在 adapters/_common/mxcagen.py → run_compile()（平台参数化，lingspeed/metax 共用）。
-本文件只负责把 pipeline 的 stdin JSON payload 转交 run_compile，并保持输出契约不变：
+Core logic lives in adapters/_common/mxcagen.py -> run_compile() (platform-parameterized,
+shared by lingspeed/metax). This file only forwards the pipeline's stdin JSON payload to
+run_compile while keeping the output contract unchanged:
   BuildArtifact {build_ok, detail, build_log_path, artifacts:[{kind,ref}],
                  toolchain, env_snapshot, duration}
 """

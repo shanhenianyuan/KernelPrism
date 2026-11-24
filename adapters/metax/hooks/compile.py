@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""compile.py — 沐曦 (Metax MXMACA) 适配器 · v3_compile hook（薄包装）
+"""compile.py - Metax (MXMACA) adapter v3_compile hook (thin wrapper)
 
-主体在 adapters/_common/mxcagen.py → run_compile(name='metax')（平台参数化）。
-输出契约与 lingspeed 对齐（BuildArtifact 兼容）。
+Core logic lives in adapters/_common/mxcagen.py -> run_compile(name='metax')
+(platform-parameterized). Output contract aligned with lingspeed
+(BuildArtifact compatible).
 """
 import os
 import sys
