@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# KernelPrism 运行产物（用户输出铁律: anvil_output/ 不入库）
+anvil_output/
+kp-runs/
+*.cluster.log
+
+# 集群/凭据（红线: 仓库不携带任何集群配置）
+*.kubeconfig
+kubeconfig*
+.git-credentials
+
+# 本地临时
+scratch/
+/tmp/
+.DS_Store

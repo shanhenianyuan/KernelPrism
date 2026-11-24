@@ -1,0 +1,34 @@
+{
+  "vendor_id": "ascend",
+  "display_name": "华为昇腾 (Ascend)",
+  "version": "2.4.0",
+  "source": {
+    "type": "local",
+    "ref": "kernel-prism adapters/ascend",
+    "url": "https://gitcode.com/cann/cannbot"
+  },
+  "devices": ["asc910", "asc950"],
+  "dsls": ["ascendc", "pypto", "tilelang", "triton", "catlass"],
+  "toolchain_hook": "toolchains/ascend-env.sh",
+  "perf_baseline_url": "https://gitcode.com/cann/cann-bench/tasks/metadata/",
+  "stages": {
+    "v0_understand": {"enabled": true, "hook": null},
+    "v1_analyze": {"enabled": true, "hook": null},
+    "v2_generate": {"enabled": true, "hook": null, "provider": "generic"},
+    "v3_compile": {"enabled": true, "hook": "hooks/compile.py"},
+    "v4_verify": {"enabled": true, "hook": "hooks/verify.py"},
+    "v5_profile": {"enabled": true, "hook": "hooks/perf.py"},
+    "v6_optimize": {"enabled": true, "hook": null},
+    "v7_register": {"enabled": true, "hook": null}
+  },
+  "agents": ["architect", "developer", "tester", "perf_tuner", "qa"],
+  "license": {
+    "id": "CANN OSL v2.0",
+    "restrictions": ["huawei-processor-only", "no-sublicense", "revocable"],
+    "install_consent_required": true
+  },
+  "entrypoints": {
+    "probe": "hooks/probe.py",
+    "status": "hooks/status.py"
+  }
+}

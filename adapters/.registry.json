@@ -1,0 +1,39 @@
+{
+  "ascend": {
+    "vendor_id": "ascend",
+    "version": "2.3.0",
+    "license_consented": true,
+    "devices": [
+      "asc910",
+      "asc950"
+    ],
+    "stages": [
+      "v0_understand",
+      "v1_analyze",
+      "v2_generate",
+      "v3_compile",
+      "v4_verify",
+      "v5_profile",
+      "v6_optimize",
+      "v7_register"
+    ]
+  },
+  "metax": {
+    "vendor_id": "metax",
+    "version": "1.0.0",
+    "license_consented": true,
+    "devices": [
+      "c550"
+    ],
+    "stages": [
+      "v0_understand",
+      "v1_analyze",
+      "v2_generate",
+      "v3_compile",
+      "v4_verify",
+      "v5_profile",
+      "v6_optimize",
+      "v7_register"
+    ]
+  }
+}

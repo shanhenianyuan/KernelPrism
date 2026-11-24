@@ -1,0 +1,20 @@
+{
+  "schema": "anvil/manifest/v1",
+  "name": "kernel-prism",
+  "layer": "app",
+  "kind": "generic",
+  "install_method": null,
+  "installed_at": null,
+  "paths": {},
+  "entries": [
+    {
+      "path": "src",
+      "type": "dir"
+    },
+    {
+      "path": "adapters",
+      "type": "dir"
+    }
+  ],
+  "installed": true
+}

@@ -1,0 +1,17 @@
+{
+  "microarch_summary": "Ascend910B: AI Core 计算单元, 双层内存层级 (L0/L1), Matrix(Cube) + Vector 双计算引擎",
+  "memory_hierarchy": "L0 片内缓冲 + L1 多核共享 + HBM; 访存对齐要求: 32B",
+  "tensor_units": "Cube 单元 (16x16x16 矩阵指令级), Vector 单元 (128 对齐向量)",
+  "vector_units": "Vector 单元 128 通道, 对齐 32B",
+  "memory_alignment": "32B 对齐; 连续访存优先",
+  "memory_bandwidth": "HBM 高带宽, 受 32B 对齐约束影响",
+  "launch_overhead": "kernel launch 开销相对单算子执行不可忽略 → 启动受限时优先算子融合",
+  "onchip_memory": "L0 有限, 大 tile 需多级切分",
+  "numeric_units": "fp16/bf16 原生; fp32 降速 → 精度受限时用分块+补偿",
+  "isa": "AscendC DSL: 基于 AI Core 的 C++ 扩展, 提供 vector/cube 编程原语",
+  "constraints": [
+    "访存必须 32B 对齐",
+    "Cube 矩阵指令要求 tile 尺寸与 16 对齐",
+    "Vector 指令 128 通道对齐"
+  ]
+}

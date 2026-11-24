@@ -1,0 +1,22 @@
+{
+  "card": "LINGSPEED.X710-M",
+  "arch": "aarch64-unknown-linux-gnu",
+  "cluster": "internal-k8s",
+  "verified_nodes": [
+    "gpu-node-2"
+  ],
+  "luca_root": "/opt/luca-3.8.0",
+  "luca_symlink": "/opt/luca -> /opt/luca-3.8.0",
+  "compiler": "/opt/luca-3.8.0/lsgpu_llvm/bin/lscc",
+  "compiler_ver": "lscc version 1.0.0 (2ec81c358c)",
+  "compile_cmd": "lscc -x luca -offload-arch native --gcc-toolchain=/usr add.cpp -o add --luca-path=/opt/luca",
+  "dev_node": "/dev/lscd (major 235)",
+  "live_add_2026_11_23": {
+    "per_iter_ms": 0.024473,
+    "std_ms": 0.000598,
+    "rounds": 100,
+    "max_abs_err": 4.768372e-07,
+    "max_rel_err": 5.960464e-08,
+    "bad": 0
+  }
+}

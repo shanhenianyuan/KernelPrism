@@ -1,0 +1,17 @@
+{
+  "microarch_summary": "Metax C550: MXMACA 计算单元, 片上多级存储, 类 CUDA 三括号编程模型 (mxcc -x maca)",
+  "memory_hierarchy": "全局显存 + 片上共享内存; 与领速 LUCA 同源换名 (lc_runtime.h↔mc_runtime.h)",
+  "tensor_units": "MXMACA 矩阵单元; kernel 以 __global__ + <<<grid, blk, 0, 0>>> 启动",
+  "vector_units": "向量通道待真机实证",
+  "memory_alignment": "待真机实证",
+  "memory_bandwidth": "待真机实证",
+  "launch_overhead": "kernel launch 开销相对单算子执行不可忽略 → 启动受限时优先算子融合",
+  "onchip_memory": "片上容量待真机实证; 大 tile 需多级切分",
+  "numeric_units": "fp32 基准验证通过 (max_abs_err <= 1e-5); fp16/bf16 支持待真机实证",
+  "isa": "MXMACA DSL: mc_runtime.h / mc_common.h, mcMalloc / mcFree / mcMemcpy(HostToDevice|DeviceToHost), mcGetErrorString, mcSuccess",
+  "constraints": [
+    "双卡同源: lc_*↔mc_*、-x luca↔-x maca、/opt/luca↔/opt/maca（对照表实证 2026-11-23）",
+    "编译器位: /opt/maca/bin/mxcc（同 lscc 位，待真机实证）",
+    "设备节点: /dev/mxc0, /dev/metax_gpu, /dev/mxc（待真机实证）"
+  ]
+}
